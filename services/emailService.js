@@ -1,21 +1,26 @@
 const nodemailer = require('nodemailer');
 
-// Create a reusable transporter using Gmail SMTP
-// Requires Gmail App Password for accounts with 2FA
+// Create a reusable transporter using explicit Gmail SMTP settings
+// Requires Gmail App Password (no spaces) for accounts with 2FA
 const transporter = nodemailer.createTransport({
-  service: 'gmail',
+  host: process.env.SMTP_HOST || 'smtp.gmail.com',
+  port: parseInt(process.env.SMTP_PORT || '465', 10),
+  secure: process.env.SMTP_SECURE ? process.env.SMTP_SECURE === 'true' : true,
   auth: {
     user: process.env.GMAIL_USER,
     pass: process.env.GMAIL_PASS
-  }
+  },
+  pool: true,
+  connectionTimeout: parseInt(process.env.SMTP_CONNECTION_TIMEOUT || '10000', 10),
+  socketTimeout: parseInt(process.env.SMTP_SOCKET_TIMEOUT || '10000', 10)
 });
 
 // Verify transporter configuration on startup (optional in production)
 transporter.verify(function(error, success) {
   if (error) {
-    console.warn('Nodemailer Gmail transporter verification failed:', error.message);
+    console.warn('Nodemailer SMTP transporter verification failed:', error.message);
   } else {
-    console.log('Nodemailer Gmail transporter ready');
+    console.log('Nodemailer SMTP transporter ready');
   }
 });
 
