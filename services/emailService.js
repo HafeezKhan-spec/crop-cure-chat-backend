@@ -1,28 +1,33 @@
 const nodemailer = require('nodemailer');
 
 // Create a reusable transporter using explicit Gmail SMTP settings
+// Prefer STARTTLS on port 587 by default (more widely allowed by PaaS providers)
 // Requires Gmail App Password (no spaces) for accounts with 2FA
 const transporter = nodemailer.createTransport({
   host: process.env.SMTP_HOST || 'smtp.gmail.com',
-  port: parseInt(process.env.SMTP_PORT || '465', 10),
-  secure: process.env.SMTP_SECURE ? process.env.SMTP_SECURE === 'true' : true,
+  port: parseInt(process.env.SMTP_PORT || '587', 10),
+  secure: process.env.SMTP_SECURE ? process.env.SMTP_SECURE === 'true' : false, // STARTTLS when false
   auth: {
     user: process.env.GMAIL_USER,
     pass: process.env.GMAIL_PASS
   },
   pool: true,
+  requireTLS: true,
   connectionTimeout: parseInt(process.env.SMTP_CONNECTION_TIMEOUT || '10000', 10),
   socketTimeout: parseInt(process.env.SMTP_SOCKET_TIMEOUT || '10000', 10)
 });
 
 // Verify transporter configuration on startup (optional in production)
-transporter.verify(function(error, success) {
-  if (error) {
-    console.warn('Nodemailer SMTP transporter verification failed:', error.message);
-  } else {
-    console.log('Nodemailer SMTP transporter ready');
-  }
-});
+// Avoid verification in production to reduce noisy startup logs and false negatives
+if ((process.env.NODE_ENV || 'development') !== 'production') {
+  transporter.verify(function(error, success) {
+    if (error) {
+      console.warn('Nodemailer SMTP transporter verification failed:', error.message);
+    } else {
+      console.log('Nodemailer SMTP transporter ready');
+    }
+  });
+}
 
 // Send OTP email
 async function sendOtpEmail(to, code) {
