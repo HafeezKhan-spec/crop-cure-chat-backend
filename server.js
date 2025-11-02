@@ -270,24 +270,6 @@ process.on('SIGINT', () => {
 
 // Start server
 const PORT = process.env.PORT || 8000;
-const server = app.listen(PORT, () => {
-  console.log(`
-🚀 AgriClip Backend Server Started Successfully!
-
-📍 Server running on: http://localhost:${PORT}
-🌍 Environment: ${process.env.NODE_ENV || 'development'}
-📚 API Documentation: http://localhost:${PORT}/api
-❤️  Health Check: http://localhost:${PORT}/health
-
-🔗 Available API Endpoints:
-   • Authentication: /api/auth/*
-   • User Management: /api/user/*
-   • File Upload: /api/upload/*
-   • Chat System: /api/chat/*
-   • AI Models: /api/model/*
-
-⚡ Ready to serve AgriClip frontend!
-  `);
-});
+const server = app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
 
 module.exports = app;
