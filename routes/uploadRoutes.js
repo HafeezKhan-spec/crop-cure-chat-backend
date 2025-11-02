@@ -2,14 +2,21 @@ const express = require('express');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
+const os = require('os');
 const { body, validationResult } = require('express-validator');
 const Upload = require('../models/Upload');
 const { authMiddleware } = require('../middleware/authMiddleware');
 
 const router = express.Router();
 
-// Create uploads directory if it doesn't exist
-const uploadsDir = path.join(__dirname, '../uploads');
+// Resolve uploads directory in a serverless-safe way
+// - On Vercel/serverless: use ephemeral writable /tmp
+// - Otherwise: default to local project uploads dir
+const uploadsDir = process.env.UPLOADS_DIR
+  ? process.env.UPLOADS_DIR
+  : (process.env.VERCEL ? path.join(os.tmpdir(), 'uploads') : path.join(__dirname, '../uploads'));
+
+// Create uploads directory if it doesn't exist (best-effort)
 if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
 }
