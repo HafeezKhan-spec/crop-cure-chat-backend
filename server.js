@@ -51,13 +51,14 @@ const corsOptions = {
       return callback(null, true);
     }
     
-    // In production, specify allowed origins
-    const allowedOrigins = [
-      'http://localhost:3000',
-      'http://localhost:5173',
-      'http://localhost:8080',
-      // Add your production frontend URLs here
-    ];
+  // In production, specify allowed origins
+  const allowedOrigins = [
+    'http://localhost:3000',
+    'http://localhost:5173',
+    'http://localhost:8080',
+    'https://crop-cure-chat-frontend.vercel.app',
+    // Add your production frontend URLs here
+  ];
     
     if (allowedOrigins.indexOf(origin) !== -1) {
       callback(null, true);
