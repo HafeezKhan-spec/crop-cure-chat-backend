@@ -5,6 +5,7 @@ const rateLimit = require('express-rate-limit');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
+const mongoose = require('mongoose');
 require('dotenv').config();
 
 // Import database connection
@@ -170,6 +171,25 @@ app.get('/api', (req, res) => {
     status: 'operational',
     uptime: process.uptime(),
     timestamp: new Date().toISOString()
+  });
+});
+
+// Database connection status
+app.get('/api/db/status', (req, res) => {
+  const conn = mongoose.connection;
+  const states = {
+    0: 'disconnected',
+    1: 'connected',
+    2: 'connecting',
+    3: 'disconnecting'
+  };
+  res.json({
+    success: true,
+    stateCode: conn.readyState,
+    state: states[conn.readyState],
+    host: conn.host,
+    name: conn.name,
+    driver: `mongoose@${mongoose.version}`
   });
 });
 
