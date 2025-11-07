@@ -111,41 +111,78 @@ router.post('/message', [
       setTimeout(async () => {
         try {
           const axios = require('axios');
-          const modelServiceUrl = process.env.MODEL_SERVICE_URL || 'http://localhost:8000';
+const modelServiceUrl = process.env.MODEL_SERVICE_URL || 'http://localhost:8001';
           
           let aiResponseText = '';
           let confidence = 75;
           let processingTime = 0;
           const startTime = Date.now();
           
-          // If user provided text, call model service text-generation endpoint
+          // If user provided text, call model service best-of-two text endpoint
           if (content.text && content.text.trim()) {
             try {
-              const axiosResp = await axios.post(`${modelServiceUrl}/text/generate`, {
+              const axiosResp = await axios.post(`${modelServiceUrl}/text/best`, {
                 text: content.text,
-                // Optional: tune generation params or pass defaults
               }, { timeout: 30000 });
 
               const gen = axiosResp.data?.data?.output || '';
+              const selectedModel = axiosResp.data?.data?.selectedModel || (process.env.TEXT_MODEL_ID || 'HafeezKing/t5-plant-disease-detector-v2');
+              const alternatives = axiosResp.data?.data?.alternatives || null;
+              const svcTime = axiosResp.data?.data?.processingTime;
+
               aiResponseText = gen || "I couldn't generate a response. Please try rephrasing your question.";
-              confidence = 85; // Placeholder: model does not provide confidence
-              processingTime = Date.now() - startTime;
+              confidence = 85; // Placeholder: service does not provide confidence
+              processingTime = typeof svcTime === 'number' ? svcTime : (Date.now() - startTime);
+
+              // Build AI message with selected model and candidates
+              const aiMessage = new Message({
+                userId: req.user._id,
+                sessionId: currentSessionId,
+                messageType: 'ai',
+                content: {
+                  text: aiResponseText,
+                  attachments: []
+                },
+                aiResponse: {
+                  model: selectedModel,
+                  confidence: confidence,
+                  processingTime,
+                  tokens: {
+                    input: content.text ? content.text.length : 0,
+                    output: aiResponseText.length
+                  },
+                  alternatives
+                },
+                context: {
+                  previousMessageId: message._id,
+                  conversationTopic: context.conversationTopic || 'general'
+                },
+                metadata: {
+                  language: req.user.languagePref || 'en'
+                },
+                status: 'completed'
+              });
+
+              await aiMessage.save();
+              // early return since we already formed and saved the AI message for text
+              return;
             } catch (err) {
-              console.error('Text generation error:', err?.response?.data || err.message);
-              aiResponseText = "There was an error generating the response from the plant disease text model. Please try again.";
+              console.error('Best-of-two text generation error:', err?.response?.data || err.message);
+              aiResponseText = "There was an error generating the response from the text models. Please try again.";
               confidence = 50;
               processingTime = Date.now() - startTime;
             }
           } else if (processedAttachments.length > 0) {
-            // If there are image attachments but no text, provide image-focused response
-            aiResponseText = "I can see you've uploaded an image. For the most accurate disease analysis, the AgriClip original classifier will process this separately. Feel free to ask any questions about what you're seeing in your crops!";
-            confidence = 80;
+            // Image attachments are analyzed by the classification flow; do not emit static chat text here.
+            // The frontend already starts classification and polls for results, and modelRoutes persists
+            // a dynamic AI message with the narrative when analysis completes.
+            return;
           } else {
             // No text or attachments
             aiResponseText = "Hello! I'm here to help with crop disease identification and agricultural advice. You can ask me questions about plant diseases, treatments, or upload images of your crops for analysis.";
             confidence = 85;
           }
-          
+
           processingTime = processingTime || (Date.now() - startTime);
 
           const aiMessage = new Message({
@@ -156,15 +193,15 @@ router.post('/message', [
               text: aiResponseText,
               attachments: []
             },
-              aiResponse: {
-                model: content.text && content.text.trim() ? (process.env.TEXT_MODEL_ID || 'HafeezKing/t5-plant-disease-detector-v2') : 'agriclip-original',
-                confidence: confidence,
-                processingTime,
-                tokens: {
-                  input: content.text ? content.text.length : 0,
-                  output: aiResponseText.length
-                }
-              },
+            aiResponse: {
+              model: processedAttachments.length > 0 ? 'agriclip-original' : (process.env.TEXT_MODEL_ID || 'HafeezKing/t5-plant-disease-detector-v2'),
+              confidence: confidence,
+              processingTime,
+              tokens: {
+                input: content.text ? content.text.length : 0,
+                output: aiResponseText.length
+              }
+            },
             context: {
               previousMessageId: message._id,
               conversationTopic: context.conversationTopic || 'general'

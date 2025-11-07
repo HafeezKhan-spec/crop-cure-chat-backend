@@ -82,6 +82,16 @@ router.put('/profile', [
     .optional()
     .isIn(['en', 'te', 'hi', 'es', 'fr'])
     .withMessage('Invalid language preference'),
+  body('bio')
+    .optional()
+    .trim()
+    .isLength({ max: 2000 })
+    .withMessage('Bio is too long'),
+  body('phone')
+    .optional()
+    .trim()
+    .isLength({ max: 50 })
+    .withMessage('Phone number is too long'),
   body('farmDetails.farmSize')
     .optional()
     .trim()
@@ -113,7 +123,9 @@ router.put('/profile', [
       email,
       languagePref,
       farmDetails,
-      profilePic
+      profilePic,
+      bio,
+      phone
     } = req.body;
 
     const user = await User.findById(req.user._id);
@@ -151,6 +163,8 @@ router.put('/profile', [
     // Update other fields
     if (languagePref) user.languagePref = languagePref;
     if (profilePic) user.profilePic = profilePic;
+    if (bio !== undefined) user.bio = bio;
+    if (phone !== undefined) user.phone = phone;
     
     if (farmDetails) {
       if (farmDetails.farmSize !== undefined) user.farmDetails.farmSize = farmDetails.farmSize;

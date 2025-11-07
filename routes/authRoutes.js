@@ -71,18 +71,38 @@ router.post('/signup', [
 
     await user.save();
 
-    // Generate token
-    const token = generateToken(user._id);
+    // Generate 6-digit OTP for signup verification
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    const expiresInMinutes = parseInt(process.env.OTP_EXPIRY_MINUTES || '10', 10);
+    const expiresAt = new Date(Date.now() + expiresInMinutes * 60 * 1000);
 
-    // Return user data (without password)
-    const userData = user.getPublicProfile();
+    await OtpCode.create({
+      userId: user._id,
+      email: user.email,
+      code: otp,
+      expiresAt,
+      used: false,
+      attempts: 0
+    });
 
+    // Send OTP via email
+    try {
+      await sendOtpEmail(user.email, otp);
+    } catch (emailErr) {
+      console.error('Failed to send OTP email:', emailErr);
+      return res.status(500).json({
+        success: false,
+        message: 'Failed to send verification code. Please try again later.'
+      });
+    }
+
+    // Inform client that signup requires OTP verification
     res.status(201).json({
       success: true,
-      message: 'User registered successfully',
+      message: 'User registered. Verification code sent to your email.',
       data: {
-        user: userData,
-        token
+        otpPending: true,
+        email: user.email
       }
     });
 

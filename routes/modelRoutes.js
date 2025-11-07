@@ -12,7 +12,7 @@ const router = express.Router();
 router.get('/status', async (req, res) => {
   try {
     const axios = require('axios');
-    const modelServiceUrl = process.env.MODEL_SERVICE_URL || 'http://localhost:8000';
+    const modelServiceUrl = process.env.MODEL_SERVICE_URL || 'http://localhost:8001';
     
     const response = await axios.get(`${modelServiceUrl}/health`);
     
@@ -40,7 +40,7 @@ router.get('/status', async (req, res) => {
 router.get('/diseases', async (req, res) => {
   try {
     const axios = require('axios');
-    const modelServiceUrl = process.env.MODEL_SERVICE_URL || 'http://localhost:8000';
+    const modelServiceUrl = process.env.MODEL_SERVICE_URL || 'http://localhost:8001';
     
     const response = await axios.get(`${modelServiceUrl}/diseases`);
     
@@ -145,7 +145,7 @@ router.post('/classify', [
     const path = require('path');
     
     // Get the FastAPI model service URL from environment variables
-    const modelServiceUrl = process.env.MODEL_SERVICE_URL || 'http://localhost:8000';
+const modelServiceUrl = process.env.MODEL_SERVICE_URL || 'http://localhost:8001';
     
     // Process the image with FastAPI model after a short delay
     setTimeout(async () => {
@@ -169,7 +169,17 @@ router.post('/classify', [
         if (imageDomain) formData.append('imageDomain', imageDomain);
         if (cropType) formData.append('cropType', cropType);
         if (location) formData.append('location', location);
-        if (additionalInfo) formData.append('additionalInfo', JSON.stringify(additionalInfo));
+        if (additionalInfo) {
+          formData.append('additionalInfo', JSON.stringify(additionalInfo));
+          // Forward user-entered message to the FastAPI service as 'text' to enable T5 narrative
+          try {
+            if (typeof additionalInfo === 'object' && typeof additionalInfo.messageContent === 'string' && additionalInfo.messageContent.trim().length > 0) {
+              formData.append('text', additionalInfo.messageContent.trim());
+            }
+          } catch (e) {
+            // ignore parsing issues; 'additionalInfo' is already forwarded
+          }
+        }
         
         console.log(`Starting classification for upload ${uploadId} with FastAPI service at ${modelServiceUrl}`);
         
@@ -181,10 +191,83 @@ router.post('/classify', [
           timeout: 30000 // 30 second timeout
         });
         
-        // Extract the analysis result from the response
+        // Extract and normalize the analysis result from the response
         const { data } = response;
-        const analysisResult = data.data.classification;
-        const narrative = data.data.report || null;
+        // If model-service indicates failure or returns no classification, abort to error handler
+        if (!data || data.success !== true || !data.data || !data.data.classification) {
+          throw new Error(data && data.message ? data.message : 'Model service classification unavailable');
+        }
+        let analysisResult = data.data.classification || {};
+        let narrative = data.data.report || null;
+
+        // If no narrative provided by model service and domain is plant,
+        // generate a farmer-friendly narrative using the T5 text model
+        if ((!narrative || String(narrative).trim().length === 0) && String(imageDomain).toLowerCase() === 'plant') {
+          try {
+            const diseaseName = (analysisResult && analysisResult.diseaseName) ? String(analysisResult.diseaseName) : 'unknown disease';
+            const userText = (additionalInfo && typeof additionalInfo === 'object' && typeof additionalInfo.messageContent === 'string')
+              ? additionalInfo.messageContent.trim()
+              : '';
+
+            const promptParts = [
+              `Detected plant disease: ${diseaseName}.`,
+              userText ? `User context: ${userText}.` : '',
+              'Provide practical treatment recommendations, preventive measures, and a brief explanation. Keep it concise and farmer-friendly.'
+            ];
+            const prompt = promptParts.filter(Boolean).join(' ');
+
+            const bestResp = await axios.post(`${modelServiceUrl}/text/best`, { text: prompt }, { timeout: 20000 });
+            const bestData = bestResp.data && bestResp.data.data ? bestResp.data.data : null;
+            const bestOutput = bestData && bestData.output ? String(bestData.output).trim() : '';
+            if (bestOutput) {
+              narrative = bestOutput;
+              // Persist selected model for downstream usage
+              analysisResult = {
+                ...analysisResult,
+                model: bestData.selectedModel || (process.env.TEXT_MODEL_ID || 'HafeezKing/t5-plant-disease-detector-v2')
+              };
+            }
+          } catch (genErr) {
+            console.warn('T5 narrative generation failed:', genErr?.response?.data || genErr.message);
+          }
+        }
+
+        // Normalize fields to match Upload schema contracts
+        try {
+          // affectedArea should be a number [0,100]
+          if (analysisResult.affectedArea != null) {
+            let aa = analysisResult.affectedArea;
+            if (typeof aa !== 'number') {
+              aa = parseFloat(aa);
+            }
+            if (Number.isFinite(aa)) {
+              analysisResult.affectedArea = Math.min(100, Math.max(0, Math.round(aa)));
+            } else {
+              analysisResult.affectedArea = null;
+            }
+          }
+
+          // severity must be one of low|medium|high or null
+          const allowedSeverity = new Set(['low','medium','high']);
+          if (analysisResult.severity != null && !allowedSeverity.has(String(analysisResult.severity).toLowerCase())) {
+            analysisResult.severity = null;
+          }
+
+          // confidence expected as 0-100
+          if (analysisResult.confidence != null) {
+            let conf = analysisResult.confidence;
+            if (typeof conf !== 'number') conf = parseFloat(conf);
+            if (Number.isFinite(conf)) {
+              // If it looks like 0-1, scale to 0-100
+              if (conf <= 1) conf = conf * 100;
+              analysisResult.confidence = Math.min(100, Math.max(0, Math.round(conf)));
+            } else {
+              analysisResult.confidence = null;
+            }
+          }
+        } catch (normErr) {
+          console.warn('Analysis result normalization warning:', normErr.message);
+        }
 
         // Update upload with results
         await Upload.findByIdAndUpdate(uploadId, {
@@ -220,7 +303,9 @@ router.post('/classify', [
                 attachments: attachment
               },
               aiResponse: {
-                model: analysisResult?.model || 'agriclip-plantvillage-15k',
+                model: (!data.data.report && String(imageDomain).toLowerCase() === 'plant')
+                  ? (analysisResult?.model || process.env.TEXT_MODEL_ID || 'HafeezKing/t5-plant-disease-detector-v2')
+                  : (analysisResult?.model || 'agriclip-plantvillage-15k'),
                 confidence: analysisResult?.confidence || 0,
                 processingTime: analysisResult?.processingTime || 0
               },

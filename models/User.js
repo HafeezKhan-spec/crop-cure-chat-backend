@@ -30,6 +30,14 @@ const userSchema = new mongoose.Schema({
     type: String,
     default: null
   },
+  bio: {
+    type: String,
+    default: null
+  },
+  phone: {
+    type: String,
+    default: null
+  },
   languagePref: {
     type: String,
     enum: ['en', 'te', 'hi', 'es', 'fr'],
