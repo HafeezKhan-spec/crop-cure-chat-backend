@@ -31,7 +31,6 @@
     "jsonwebtoken": "^9.0.2",
     "mongoose": "^8.0.3",
     "multer": "^1.4.5-lts.1",
-    "@sendinblue/client": "^9.0.0",
     "uuid": "^13.0.0"
   },
   "devDependencies": {

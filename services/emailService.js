@@ -1,8 +1,4 @@
-const SibApiV3Sdk = require('@sendinblue/client');
-
-// Configure Brevo (Sendinblue) Transactional API client
-const brevo = new SibApiV3Sdk.TransactionalEmailsApi();
-brevo.setApiKey(SibApiV3Sdk.Auth.ApiKey, process.env.BREVO_API_KEY);
+const axios = require('axios');
 
 // Send OTP email via Brevo
 async function sendOtpEmail(to, code) {
@@ -23,12 +19,20 @@ async function sendOtpEmail(to, code) {
       </div>
     `;
 
-  await brevo.sendTransacEmail({
+  const payload = {
     sender: { email: senderEmail, name: 'AgriClip' },
     to: [{ email: to }],
     subject,
     textContent,
     htmlContent
+  };
+
+  await axios.post('https://api.brevo.com/v3/smtp/email', payload, {
+    headers: {
+      'api-key': process.env.BREVO_API_KEY,
+      'Content-Type': 'application/json'
+    },
+    timeout: 10000
   });
 }
 
