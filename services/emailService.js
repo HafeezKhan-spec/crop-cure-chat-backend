@@ -1,41 +1,19 @@
-const nodemailer = require('nodemailer');
+const SibApiV3Sdk = require('@sendinblue/client');
 
-// Create a reusable transporter using Gmail SMTP
-// Requires Gmail App Password for accounts with 2FA
-// Explicit Gmail SMTP + STARTTLS (more reliable in hosted environments)
-const transporter = nodemailer.createTransport({
-  host: 'smtp.gmail.com',
-  port: 587,
-  secure: false,          // STARTTLS
-  requireTLS: true,
-  auth: {
-    user: process.env.GMAIL_USER,
-    pass: process.env.GMAIL_PASS
-  },
-  connectionTimeout: 10000,
-  greetingTimeout: 5000
-});
+// Configure Brevo (Sendinblue) Transactional API client
+const brevo = new SibApiV3Sdk.TransactionalEmailsApi();
+brevo.setApiKey(SibApiV3Sdk.Auth.ApiKey, process.env.BREVO_API_KEY);
 
-// Only verify in non-production to avoid startup delays/timeouts
-if (process.env.NODE_ENV !== 'production') {
-  transporter.verify((error, success) => {
-    if (error) {
-      console.warn('Nodemailer Gmail SMTP verification failed:', error.message);
-    } else {
-      console.log('Nodemailer Gmail SMTP transporter ready');
-    }
-  });
-}
-
-// Send OTP email
+// Send OTP email via Brevo
 async function sendOtpEmail(to, code) {
   const expiry = process.env.OTP_EXPIRY_MINUTES || 5;
-  const mailOptions = {
-    from: process.env.GMAIL_USER,
-    to,
-    subject: 'Your AgriClip Verification Code',
-    text: `Your verification code is ${code}. It expires in ${expiry} minutes.`,
-    html: `
+
+  const senderEmail = (process.env.EMAIL_FROM || 'no-reply@yourdomain.com')
+    .replace(/^["\s]*|["\s]*$/g, '');
+
+  const subject = 'Your AgriClip Verification Code';
+  const textContent = `Your verification code is ${code}. It expires in ${expiry} minutes.`;
+  const htmlContent = `
       <div style="font-family: Arial, sans-serif; line-height: 1.6;">
         <h2>AgriClip Verification</h2>
         <p>Your verification code is:</p>
@@ -43,10 +21,15 @@ async function sendOtpEmail(to, code) {
         <p>This code will expire in <strong>${expiry} minutes</strong>.</p>
         <p>If you did not request this code, you can ignore this email.</p>
       </div>
-    `
-  };
+    `;
 
-  await transporter.sendMail(mailOptions);
+  await brevo.sendTransacEmail({
+    sender: { email: senderEmail, name: 'AgriClip' },
+    to: [{ email: to }],
+    subject,
+    textContent,
+    htmlContent
+  });
 }
 
 module.exports = { sendOtpEmail };
